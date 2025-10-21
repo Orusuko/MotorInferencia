@@ -1,5 +1,9 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
+import re
+from datetime import datetime
+from models import Usuario, Paciente, Enfermedad, Diagnostico, Sintoma, Signo
+from database import db
 
 # ======== Pantalla de Login ========
 class LoginWindow(tk.Tk):
@@ -25,21 +29,31 @@ class LoginWindow(tk.Tk):
                   width=20, command=self.login).pack(pady=20)
 
     def login(self):
-        user = self.user_entry.get()
-        if user.strip() == "":
-            messagebox.showwarning("Aviso", "Ingresa un usuario para continuar")
-        else:
+        username = self.user_entry.get()
+        password = self.pass_entry.get()
+        
+        if username.strip() == "" or password.strip() == "":
+            messagebox.showwarning("Aviso", "Ingresa usuario y contraseña para continuar")
+            return
+            
+        # Autenticar con la base de datos
+        user_data = db.authenticate_user(username, password)
+        if user_data:
             self.destroy()
-            DashboardWindow(user)
+            DashboardWindow(user_data[1], user_data[2])  # nombre, rol
+        else:
+            messagebox.showerror("Error", "Usuario o contraseña incorrectos")
 
 
 # ======== Pantalla principal ========
 class DashboardWindow(tk.Tk):
-    def __init__(self, username):
+    def __init__(self, username, rol):
         super().__init__()
         self.title("Motor Diagnóstico Médico")
         self.geometry("1000x600")
         self.config(bg="white")
+        self.username = username
+        self.rol = rol
 
         # Marco lateral
         sidebar = tk.Frame(self, bg="#1e40af", width=200)
@@ -58,6 +72,12 @@ class DashboardWindow(tk.Tk):
                       font=("Arial", 11, "bold"), relief="flat",
                       activebackground="#2563eb",
                       command=cmd, anchor="w", padx=20, height=2).pack(fill="x")
+        
+        # Botón de cerrar sesión
+        tk.Button(sidebar, text="Cerrar Sesión", bg="#dc2626", fg="white",
+                  font=("Arial", 11, "bold"), relief="flat",
+                  activebackground="#ef4444",
+                  command=self.logout, anchor="w", padx=20, height=2).pack(side="bottom", fill="x", pady=(20, 0))
 
         # Contenedor principal
         self.content = tk.Frame(self, bg="white")
@@ -74,6 +94,51 @@ class DashboardWindow(tk.Tk):
                  font=("Arial", 18, "bold"), bg="white", fg="#1e40af").pack(pady=60)
         tk.Label(self.content, text="Selecciona una opción del menú lateral",
                  font=("Arial", 12), bg="white").pack()
+    
+    # ====== Cerrar sesión ======
+    def logout(self):
+        if messagebox.askyesno("Cerrar Sesión", "¿Estás seguro de que quieres cerrar sesión?"):
+            self.destroy()
+            LoginWindow()
+    
+    # ====== Utilidades ======
+    def calculate_age(self, fecha_nacimiento):
+        """Calcular edad a partir de fecha de nacimiento."""
+        if not fecha_nacimiento:
+            return 0
+        try:
+            from datetime import datetime
+            birth_date = datetime.fromisoformat(fecha_nacimiento)
+            today = datetime.today()
+            age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+            return age
+        except (ValueError, TypeError):
+            return 0
+    
+    def validate_email(self, email):
+        """Validar formato de email."""
+        if not email:
+            return True  # Email opcional
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(pattern, email) is not None
+    
+    def validate_phone(self, phone):
+        """Validar formato de teléfono."""
+        if not phone:
+            return True  # Teléfono opcional
+        # Permitir números con o sin guiones, espacios, paréntesis
+        pattern = r'^[\d\s\-\(\)\+]+$'
+        return re.match(pattern, phone) is not None and len(phone.replace(' ', '').replace('-', '').replace('(', '').replace(')', '').replace('+', '')) >= 7
+    
+    def validate_date(self, date_str):
+        """Validar formato de fecha."""
+        if not date_str:
+            return True  # Fecha opcional
+        try:
+            datetime.strptime(date_str, '%Y-%m-%d')
+            return True
+        except ValueError:
+            return False
 
     # ====== Usuarios ======
     def show_usuarios(self):
@@ -81,72 +146,94 @@ class DashboardWindow(tk.Tk):
 
         columns = ("ID", "Nombre", "Usuario", "Rol", "Correo")
         table = self.create_table(columns)
-        usuarios = [
-            (1, "Administrador General", "admin", "Administrador", "admin@mail.com"),
-            (2, "Dr. Juan Méndez", "jmendez", "Médico", "juan.mendez@mail.com"),
-            (3, "Dra. Ana Torres", "atorres", "Médico", "ana.torres@imss.com"),
-            (4, "Aux. Carla López", "clopez", "Auxiliar", "carla.lopez@similares.com")
-        ]
-        self.insert_data(table, usuarios)
-        self.create_crud_buttons()
+        
+        # Obtener usuarios de la base de datos
+        usuarios_data = db.select('usuarios', 'id, nombre, usuario, rol, correo')
+        if usuarios_data:
+            self.insert_data(table, usuarios_data)
+        
+        self.create_crud_buttons(table, "usuarios")
 
     # ====== Pacientes ======
     def show_pacientes(self):
         self.clear_content("Pacientes")
 
-        columns = ("ID", "Nombre", "Edad", "Género")
+        columns = ("ID", "Nombre", "Apellido", "Edad", "Género", "Teléfono")
         table = self.create_table(columns)
-        pacientes = [
-            (1, "Juan Pérez", 30, "Masculino"),
-            (2, "María García", 25, "Femenino"),
-            (3, "Ana López", 40, "Femenino"),
-            (4, "Carlos Torres", 55, "Masculino"),
-        ]
-        self.insert_data(table, pacientes)
-        self.create_crud_buttons()
+        
+        # Obtener pacientes de la base de datos
+        pacientes_data = db.select('pacientes', 'id, nombre, apellido, fecha_nacimiento, genero, telefono')
+        if pacientes_data:
+            # Calcular edad y formatear datos
+            formatted_data = []
+            for paciente in pacientes_data:
+                edad = self.calculate_age(paciente[3]) if paciente[3] else 0
+                formatted_data.append((paciente[0], paciente[1], paciente[2], edad, paciente[4] or "", paciente[5] or ""))
+            self.insert_data(table, formatted_data)
+        
+        self.create_crud_buttons(table, "pacientes")
 
     # ====== Diagnósticos ======
     def show_diagnosticos(self):
         self.clear_content("Diagnósticos")
 
-        columns = ("ID", "Paciente", "Síntomas", "Diagnóstico", "Tratamiento")
+        columns = ("ID", "Paciente", "Médico", "Fecha", "Notas")
         table = self.create_table(columns)
-        diagnosticos = [
-            (1, "Juan Pérez", "Tos, fiebre", "Bronquitis", "Reposo e hidratación"),
-            (2, "María García", "Dolor de cabeza, fiebre", "Migraña", "Analgésico y descanso"),
-            (3, "Ana López", "Dolor abdominal", "Gastritis", "Dieta blanda y omeprazol"),
-        ]
-        self.insert_data(table, diagnosticos)
-        self.create_crud_buttons()
+        
+        # Obtener diagnósticos de la base de datos con información de paciente y médico
+        query = """
+        SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
+               u.nombre as medico_nombre, d.fecha_diagnostico, d.notas
+        FROM diagnosticos d
+        JOIN pacientes p ON d.paciente_id = p.id
+        JOIN usuarios u ON d.usuario_id = u.id
+        ORDER BY d.fecha_diagnostico DESC
+        """
+        diagnosticos_data = db.select(query)
+        if diagnosticos_data:
+            self.insert_data(table, diagnosticos_data)
+        
+        self.create_crud_buttons(table, "diagnosticos")
 
     # ====== Enfermedades ======
     def show_enfermedades(self):
         self.clear_content("Enfermedades")
 
-        columns = ("ID", "Nombre", "Síntomas", "Signos", "Tratamiento")
+        columns = ("ID", "Nombre", "Descripción", "Tratamiento Base")
         table = self.create_table(columns)
-        enfermedades = [
-            (1, "Bronquitis", "Tos, fiebre, dificultad respiratoria", "Inflamación bronquial", "Reposo e hidratación"),
-            (2, "Gastritis", "Dolor abdominal, náusea", "Sensibilidad estomacal", "Dieta blanda y medicamentos"),
-            (3, "Migraña", "Dolor de cabeza, mareo", "Fotofobia", "Analgésicos y reposo"),
-        ]
-        self.insert_data(table, enfermedades)
-        self.create_crud_buttons()
+        
+        # Obtener enfermedades de la base de datos
+        enfermedades_data = db.select('enfermedades', 'id, nombre, descripcion, tratamiento_base')
+        if enfermedades_data:
+            self.insert_data(table, enfermedades_data)
+        
+        self.create_crud_buttons(table, "enfermedades")
 
     # ====== Historial médico ======
     def show_historial(self):
         self.clear_content("Historial Médico")
 
-        columns = ("ID", "Paciente", "Diagnóstico", "Fecha", "Evolución")
+        columns = ("ID", "Paciente", "Diagnóstico", "Fecha", "Médico")
         table = self.create_table(columns)
-        historial = [
-            (1, "Juan Pérez", "Bronquitis", "2024-09-12", "Mejorando"),
-            (2, "María García", "Migraña", "2024-09-13", "Controlado"),
-            (3, "Ana López", "Gastritis", "2024-09-15", "En tratamiento"),
-            (4, "Carlos Torres", "Sin diagnóstico", "2024-09-17", "Pendiente revisión")
-        ]
-        self.insert_data(table, historial)
-        self.create_crud_buttons()
+        
+        # Obtener historial de diagnósticos de la base de datos
+        query = """
+        SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
+               GROUP_CONCAT(e.nombre, ', ') as enfermedades,
+               d.fecha_diagnostico, u.nombre as medico_nombre
+        FROM diagnosticos d
+        JOIN pacientes p ON d.paciente_id = p.id
+        JOIN usuarios u ON d.usuario_id = u.id
+        LEFT JOIN diagnostico_enfermedad de ON d.id = de.diagnostico_id
+        LEFT JOIN enfermedades e ON de.enfermedad_id = e.id
+        GROUP BY d.id
+        ORDER BY d.fecha_diagnostico DESC
+        """
+        historial_data = db.select(query)
+        if historial_data:
+            self.insert_data(table, historial_data)
+        
+        self.create_crud_buttons(table, "historial")
 
     # ====== Utilidades ======
     def clear_content(self, title):
@@ -169,12 +256,462 @@ class DashboardWindow(tk.Tk):
         for item in data:
             table.insert("", "end", values=item)
 
-    def create_crud_buttons(self):
+    def create_crud_buttons(self, table, section):
         btn_frame = tk.Frame(self.content, bg="white")
         btn_frame.pack(pady=15)
         style = {"bg": "#2563eb", "fg": "white", "relief": "flat", "font": ("Arial", 11, "bold")}
-        for text in ["Agregar", "Editar", "Eliminar", "Buscar"]:
-            tk.Button(btn_frame, text=text, width=12, **style).pack(side="left", padx=15)
+        
+        # Botones CRUD con funcionalidad
+        tk.Button(btn_frame, text="Agregar", width=12, 
+                 command=lambda: self.add_record(section), **style).pack(side="left", padx=15)
+        tk.Button(btn_frame, text="Editar", width=12, 
+                 command=lambda: self.edit_record(table, section), **style).pack(side="left", padx=15)
+        tk.Button(btn_frame, text="Eliminar", width=12, 
+                 command=lambda: self.delete_record(table, section), **style).pack(side="left", padx=15)
+        tk.Button(btn_frame, text="Buscar", width=12, 
+                 command=lambda: self.search_records(table, section), **style).pack(side="left", padx=15)
+        tk.Button(btn_frame, text="Refrescar", width=12, 
+                 command=lambda: self.refresh_section(section), **style).pack(side="left", padx=15)
+
+    # ====== Métodos CRUD ======
+    def add_record(self, section):
+        """Agregar un nuevo registro."""
+        if section == "usuarios":
+            self.show_usuario_form()
+        elif section == "pacientes":
+            self.show_paciente_form()
+        elif section == "enfermedades":
+            self.show_enfermedad_form()
+        elif section == "diagnosticos":
+            self.show_diagnostico_form()
+        else:
+            messagebox.showinfo("Info", f"Funcionalidad de agregar {section} en desarrollo")
+
+    def edit_record(self, table, section):
+        """Editar un registro seleccionado."""
+        selected = table.selection()
+        if not selected:
+            messagebox.showwarning("Aviso", "Selecciona un registro para editar")
+            return
+        
+        item = table.item(selected[0])
+        record_id = item['values'][0]
+        
+        if section == "usuarios":
+            self.show_usuario_form(record_id)
+        elif section == "pacientes":
+            self.show_paciente_form(record_id)
+        elif section == "enfermedades":
+            self.show_enfermedad_form(record_id)
+        elif section == "diagnosticos":
+            self.show_diagnostico_form(record_id)
+        else:
+            messagebox.showinfo("Info", f"Funcionalidad de editar {section} en desarrollo")
+
+    def delete_record(self, table, section):
+        """Eliminar un registro seleccionado."""
+        selected = table.selection()
+        if not selected:
+            messagebox.showwarning("Aviso", "Selecciona un registro para eliminar")
+            return
+        
+        item = table.item(selected[0])
+        record_id = item['values'][0]
+        record_name = item['values'][1] if len(item['values']) > 1 else f"ID {record_id}"
+        
+        if messagebox.askyesno("Confirmar", f"¿Estás seguro de eliminar {record_name}?"):
+            if db.delete(section, record_id):
+                messagebox.showinfo("Éxito", "Registro eliminado correctamente")
+                # Refrescar la tabla
+                if section == "usuarios":
+                    self.show_usuarios()
+                elif section == "pacientes":
+                    self.show_pacientes()
+                elif section == "enfermedades":
+                    self.show_enfermedades()
+                elif section == "diagnosticos":
+                    self.show_diagnosticos()
+                elif section == "historial":
+                    self.show_historial()
+            else:
+                messagebox.showerror("Error", "No se pudo eliminar el registro")
+
+    def search_records(self, table, section):
+        """Buscar registros."""
+        search_term = simpledialog.askstring("Buscar", f"Ingresa el término de búsqueda para {section}:")
+        if search_term:
+            self.perform_search(table, section, search_term)
+
+    def perform_search(self, table, section, search_term):
+        """Realizar búsqueda en la base de datos."""
+        # Limpiar tabla actual
+        for item in table.get_children():
+            table.delete(item)
+        
+        try:
+            if section == "usuarios":
+                query = """
+                SELECT id, nombre, usuario, rol, correo 
+                FROM usuarios 
+                WHERE nombre LIKE ? OR usuario LIKE ? OR correo LIKE ?
+                """
+                params = (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%")
+                results = db.select(query, params=params)
+                
+            elif section == "pacientes":
+                query = """
+                SELECT id, nombre, apellido, fecha_nacimiento, genero, telefono 
+                FROM pacientes 
+                WHERE nombre LIKE ? OR apellido LIKE ? OR telefono LIKE ? OR correo LIKE ?
+                """
+                params = (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%")
+                results = db.select(query, params=params)
+                
+                # Formatear datos para mostrar edad
+                if results:
+                    formatted_results = []
+                    for paciente in results:
+                        edad = self.calculate_age(paciente[3]) if paciente[3] else 0
+                        formatted_results.append((paciente[0], paciente[1], paciente[2], edad, paciente[4] or "", paciente[5] or ""))
+                    results = formatted_results
+                    
+            elif section == "enfermedades":
+                query = """
+                SELECT id, nombre, descripcion, tratamiento_base 
+                FROM enfermedades 
+                WHERE nombre LIKE ? OR descripcion LIKE ? OR tratamiento_base LIKE ?
+                """
+                params = (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%")
+                results = db.select(query, params=params)
+                
+            elif section == "diagnosticos":
+                query = """
+                SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
+                       u.nombre as medico_nombre, d.fecha_diagnostico, d.notas
+                FROM diagnosticos d
+                JOIN pacientes p ON d.paciente_id = p.id
+                JOIN usuarios u ON d.usuario_id = u.id
+                WHERE p.nombre LIKE ? OR p.apellido LIKE ? OR u.nombre LIKE ? OR d.notas LIKE ?
+                ORDER BY d.fecha_diagnostico DESC
+                """
+                params = (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%")
+                results = db.select(query, params=params)
+                
+            elif section == "historial":
+                query = """
+                SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
+                       GROUP_CONCAT(e.nombre, ', ') as enfermedades,
+                       d.fecha_diagnostico, u.nombre as medico_nombre
+                FROM diagnosticos d
+                JOIN pacientes p ON d.paciente_id = p.id
+                JOIN usuarios u ON d.usuario_id = u.id
+                LEFT JOIN diagnostico_enfermedad de ON d.id = de.diagnostico_id
+                LEFT JOIN enfermedades e ON de.enfermedad_id = e.id
+                WHERE p.nombre LIKE ? OR p.apellido LIKE ? OR u.nombre LIKE ? OR e.nombre LIKE ?
+                GROUP BY d.id
+                ORDER BY d.fecha_diagnostico DESC
+                """
+                params = (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%")
+                results = db.select(query, params=params)
+            
+            else:
+                messagebox.showinfo("Info", f"Búsqueda no implementada para {section}")
+                return
+            
+            if results:
+                self.insert_data(table, results)
+                messagebox.showinfo("Búsqueda", f"Se encontraron {len(results)} resultados para '{search_term}'")
+            else:
+                messagebox.showinfo("Búsqueda", f"No se encontraron resultados para '{search_term}'")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error en la búsqueda: {str(e)}")
+
+    def refresh_section(self, section):
+        """Refrescar la sección actual."""
+        if section == "usuarios":
+            self.show_usuarios()
+        elif section == "pacientes":
+            self.show_pacientes()
+        elif section == "enfermedades":
+            self.show_enfermedades()
+        elif section == "diagnosticos":
+            self.show_diagnosticos()
+        elif section == "historial":
+            self.show_historial()
+
+    # ====== Formularios ======
+    def show_usuario_form(self, user_id=None):
+        """Mostrar formulario de usuario."""
+        form_window = tk.Toplevel(self)
+        form_window.title("Agregar Usuario" if not user_id else "Editar Usuario")
+        form_window.geometry("400x500")
+        form_window.config(bg="white")
+        
+        # Campos del formulario
+        tk.Label(form_window, text="Nombre:", bg="white").pack(pady=5)
+        nombre_entry = tk.Entry(form_window, width=40)
+        nombre_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Usuario:", bg="white").pack(pady=5)
+        usuario_entry = tk.Entry(form_window, width=40)
+        usuario_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Contraseña:", bg="white").pack(pady=5)
+        password_entry = tk.Entry(form_window, width=40, show="*")
+        password_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Rol:", bg="white").pack(pady=5)
+        rol_var = tk.StringVar(value="medico")
+        rol_combo = ttk.Combobox(form_window, textvariable=rol_var, 
+                                values=["admin", "medico", "auxiliar"], state="readonly")
+        rol_combo.pack(pady=5)
+        
+        tk.Label(form_window, text="Correo:", bg="white").pack(pady=5)
+        correo_entry = tk.Entry(form_window, width=40)
+        correo_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Teléfono:", bg="white").pack(pady=5)
+        telefono_entry = tk.Entry(form_window, width=40)
+        telefono_entry.pack(pady=5)
+        
+        # Cargar datos si es edición
+        if user_id:
+            user_data = db.select('usuarios', where="id = ?", params=(user_id,), fetch_one=True)
+            if user_data:
+                nombre_entry.insert(0, user_data[1])
+                usuario_entry.insert(0, user_data[2])
+                rol_var.set(user_data[4])
+                correo_entry.insert(0, user_data[5] or "")
+                telefono_entry.insert(0, user_data[6] or "")
+        
+        def save_user():
+            data = {
+                'nombre': nombre_entry.get().strip(),
+                'usuario': usuario_entry.get().strip(),
+                'password': password_entry.get(),
+                'rol': rol_var.get(),
+                'correo': correo_entry.get().strip(),
+                'telefono': telefono_entry.get().strip()
+            }
+            
+            # Validaciones
+            if not all([data['nombre'], data['usuario'], data['password'], data['rol']]):
+                messagebox.showerror("Error", "Completa todos los campos obligatorios")
+                return
+            
+            if not self.validate_email(data['correo']):
+                messagebox.showerror("Error", "Formato de correo electrónico inválido")
+                return
+            
+            if not self.validate_phone(data['telefono']):
+                messagebox.showerror("Error", "Formato de teléfono inválido")
+                return
+            
+            # Verificar si el usuario ya existe (solo para nuevos usuarios)
+            if not user_id:
+                existing_user = db.select('usuarios', where="usuario = ?", params=(data['usuario'],), fetch_one=True)
+                if existing_user:
+                    messagebox.showerror("Error", "El nombre de usuario ya existe")
+                    return
+            
+            try:
+                if user_id:
+                    # Actualizar
+                    if db.update('usuarios', user_id, data):
+                        messagebox.showinfo("Éxito", "Usuario actualizado correctamente")
+                        form_window.destroy()
+                        self.show_usuarios()
+                    else:
+                        messagebox.showerror("Error", "No se pudo actualizar el usuario")
+                else:
+                    # Crear nuevo
+                    if db.insert('usuarios', data):
+                        messagebox.showinfo("Éxito", "Usuario creado correctamente")
+                        form_window.destroy()
+                        self.show_usuarios()
+                    else:
+                        messagebox.showerror("Error", "No se pudo crear el usuario")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar usuario: {str(e)}")
+        
+        tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
+                 command=save_user).pack(pady=20)
+
+    def show_paciente_form(self, paciente_id=None):
+        """Mostrar formulario de paciente."""
+        form_window = tk.Toplevel(self)
+        form_window.title("Agregar Paciente" if not paciente_id else "Editar Paciente")
+        form_window.geometry("400x600")
+        form_window.config(bg="white")
+        
+        # Campos del formulario
+        tk.Label(form_window, text="Nombre:", bg="white").pack(pady=5)
+        nombre_entry = tk.Entry(form_window, width=40)
+        nombre_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Apellido:", bg="white").pack(pady=5)
+        apellido_entry = tk.Entry(form_window, width=40)
+        apellido_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Fecha de Nacimiento (YYYY-MM-DD):", bg="white").pack(pady=5)
+        fecha_entry = tk.Entry(form_window, width=40)
+        fecha_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Género:", bg="white").pack(pady=5)
+        genero_var = tk.StringVar(value="Masculino")
+        genero_combo = ttk.Combobox(form_window, textvariable=genero_var,
+                                   values=["Masculino", "Femenino", "Otro"], state="readonly")
+        genero_combo.pack(pady=5)
+        
+        tk.Label(form_window, text="Dirección:", bg="white").pack(pady=5)
+        direccion_entry = tk.Entry(form_window, width=40)
+        direccion_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Teléfono:", bg="white").pack(pady=5)
+        telefono_entry = tk.Entry(form_window, width=40)
+        telefono_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Correo:", bg="white").pack(pady=5)
+        correo_entry = tk.Entry(form_window, width=40)
+        correo_entry.pack(pady=5)
+        
+        # Cargar datos si es edición
+        if paciente_id:
+            paciente_data = db.select('pacientes', where="id = ?", params=(paciente_id,), fetch_one=True)
+            if paciente_data:
+                nombre_entry.insert(0, paciente_data[1])
+                apellido_entry.insert(0, paciente_data[2])
+                fecha_entry.insert(0, paciente_data[3] or "")
+                genero_var.set(paciente_data[4] or "Masculino")
+                direccion_entry.insert(0, paciente_data[5] or "")
+                telefono_entry.insert(0, paciente_data[6] or "")
+                correo_entry.insert(0, paciente_data[7] or "")
+        
+        def save_paciente():
+            data = {
+                'nombre': nombre_entry.get().strip(),
+                'apellido': apellido_entry.get().strip(),
+                'fecha_nacimiento': fecha_entry.get().strip(),
+                'genero': genero_var.get(),
+                'direccion': direccion_entry.get().strip(),
+                'telefono': telefono_entry.get().strip(),
+                'correo': correo_entry.get().strip()
+            }
+            
+            # Validaciones
+            if not all([data['nombre'], data['apellido']]):
+                messagebox.showerror("Error", "Completa nombre y apellido")
+                return
+            
+            if data['fecha_nacimiento'] and not self.validate_date(data['fecha_nacimiento']):
+                messagebox.showerror("Error", "Formato de fecha inválido. Use YYYY-MM-DD")
+                return
+            
+            if not self.validate_email(data['correo']):
+                messagebox.showerror("Error", "Formato de correo electrónico inválido")
+                return
+            
+            if not self.validate_phone(data['telefono']):
+                messagebox.showerror("Error", "Formato de teléfono inválido")
+                return
+            
+            try:
+                if paciente_id:
+                    # Actualizar
+                    if db.update('pacientes', paciente_id, data):
+                        messagebox.showinfo("Éxito", "Paciente actualizado correctamente")
+                        form_window.destroy()
+                        self.show_pacientes()
+                    else:
+                        messagebox.showerror("Error", "No se pudo actualizar el paciente")
+                else:
+                    # Crear nuevo
+                    if db.insert('pacientes', data):
+                        messagebox.showinfo("Éxito", "Paciente creado correctamente")
+                        form_window.destroy()
+                        self.show_pacientes()
+                    else:
+                        messagebox.showerror("Error", "No se pudo crear el paciente")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar paciente: {str(e)}")
+        
+        tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
+                 command=save_paciente).pack(pady=20)
+
+    def show_enfermedad_form(self, enfermedad_id=None):
+        """Mostrar formulario de enfermedad."""
+        form_window = tk.Toplevel(self)
+        form_window.title("Agregar Enfermedad" if not enfermedad_id else "Editar Enfermedad")
+        form_window.geometry("500x400")
+        form_window.config(bg="white")
+        
+        # Campos del formulario
+        tk.Label(form_window, text="Nombre:", bg="white").pack(pady=5)
+        nombre_entry = tk.Entry(form_window, width=50)
+        nombre_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Descripción:", bg="white").pack(pady=5)
+        descripcion_text = tk.Text(form_window, width=50, height=4)
+        descripcion_text.pack(pady=5)
+        
+        tk.Label(form_window, text="Tratamiento Base:", bg="white").pack(pady=5)
+        tratamiento_text = tk.Text(form_window, width=50, height=4)
+        tratamiento_text.pack(pady=5)
+        
+        # Cargar datos si es edición
+        if enfermedad_id:
+            enfermedad_data = db.select('enfermedades', where="id = ?", params=(enfermedad_id,), fetch_one=True)
+            if enfermedad_data:
+                nombre_entry.insert(0, enfermedad_data[1])
+                descripcion_text.insert("1.0", enfermedad_data[2] or "")
+                tratamiento_text.insert("1.0", enfermedad_data[3] or "")
+        
+        def save_enfermedad():
+            data = {
+                'nombre': nombre_entry.get().strip(),
+                'descripcion': descripcion_text.get("1.0", tk.END).strip(),
+                'tratamiento_base': tratamiento_text.get("1.0", tk.END).strip()
+            }
+            
+            # Validaciones
+            if not data['nombre']:
+                messagebox.showerror("Error", "Completa el nombre de la enfermedad")
+                return
+            
+            # Verificar si la enfermedad ya existe (solo para nuevas enfermedades)
+            if not enfermedad_id:
+                existing_enfermedad = db.select('enfermedades', where="nombre = ?", params=(data['nombre'],), fetch_one=True)
+                if existing_enfermedad:
+                    messagebox.showerror("Error", "Ya existe una enfermedad con ese nombre")
+                    return
+            
+            try:
+                if enfermedad_id:
+                    # Actualizar
+                    if db.update('enfermedades', enfermedad_id, data):
+                        messagebox.showinfo("Éxito", "Enfermedad actualizada correctamente")
+                        form_window.destroy()
+                        self.show_enfermedades()
+                    else:
+                        messagebox.showerror("Error", "No se pudo actualizar la enfermedad")
+                else:
+                    # Crear nuevo
+                    if db.insert('enfermedades', data):
+                        messagebox.showinfo("Éxito", "Enfermedad creada correctamente")
+                        form_window.destroy()
+                        self.show_enfermedades()
+                    else:
+                        messagebox.showerror("Error", "No se pudo crear la enfermedad")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar enfermedad: {str(e)}")
+        
+        tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
+                 command=save_enfermedad).pack(pady=20)
+
+    def show_diagnostico_form(self, diagnostico_id=None):
+        """Mostrar formulario de diagnóstico."""
+        messagebox.showinfo("Info", "Formulario de diagnóstico en desarrollo")
 
 
 # ======== Ejecutar la app ========
