@@ -59,23 +59,12 @@ class DashboardWindow(tk.Tk):
         sidebar = tk.Frame(self, bg="#1e40af", width=200)
         sidebar.pack(side="left", fill="y")
 
-        # Botones menú
-        menu_items = [
-            ("Usuarios", self.show_usuarios),
-            ("Pacientes", self.show_pacientes),
-            ("Diagnósticos", self.show_diagnosticos),
-            ("Enfermedades", self.show_enfermedades),
-            ("Historial", self.show_historial)
-        ]
-        for text, cmd in menu_items:
-            tk.Button(sidebar, text=text, bg="#1e40af", fg="white",
-                      font=("Arial", 11, "bold"), relief="flat",
-                      activebackground="#2563eb",
-                      command=cmd, anchor="w", padx=20, height=2).pack(fill="x")
+        # Botones menú según rol
+        self.create_menu_buttons(sidebar)
         
         # Botón de cerrar sesión
         tk.Button(sidebar, text="Cerrar Sesión", bg="#dc2626", fg="white",
-                  font=("Arial", 11, "bold"), relief="flat",
+                      font=("Arial", 11, "bold"), relief="flat",
                   activebackground="#ef4444",
                   command=self.logout, anchor="w", padx=20, height=2).pack(side="bottom", fill="x", pady=(20, 0))
 
@@ -100,6 +89,43 @@ class DashboardWindow(tk.Tk):
         if messagebox.askyesno("Cerrar Sesión", "¿Estás seguro de que quieres cerrar sesión?"):
             self.destroy()
             LoginWindow()
+    
+    # ====== Crear menú según rol ======
+    def create_menu_buttons(self, sidebar):
+        """Crear botones del menú según el rol del usuario."""
+        if self.rol == "admin":
+            # Admin puede ver usuarios y gestionar el sistema
+            menu_items = [
+                ("Usuarios", self.show_usuarios),
+                ("Pacientes", self.show_pacientes),
+                ("Enfermedades", self.show_enfermedades),
+                ("Historial", self.show_historial)
+            ]
+        elif self.rol == "medico":
+            # Médico puede ver pacientes, diagnosticar y ver historial
+            menu_items = [
+                ("Pacientes", self.show_pacientes),
+                ("Diagnósticos", self.show_diagnosticos),
+                ("Enfermedades", self.show_enfermedades),
+                ("Historial", self.show_historial)
+            ]
+        elif self.rol == "auxiliar":
+            # Auxiliar puede ver pacientes y historial (solo lectura)
+            menu_items = [
+                ("Pacientes", self.show_pacientes),
+                ("Historial", self.show_historial)
+            ]
+        else:
+            # Rol desconocido - acceso mínimo
+            menu_items = [
+                ("Pacientes", self.show_pacientes)
+            ]
+        
+        for text, cmd in menu_items:
+            tk.Button(sidebar, text=text, bg="#1e40af", fg="white",
+                      font=("Arial", 11, "bold"), relief="flat",
+                      activebackground="#2563eb",
+                      command=cmd, anchor="w", padx=20, height=2).pack(fill="x")
     
     # ====== Utilidades ======
     def calculate_age(self, fecha_nacimiento):
@@ -261,21 +287,64 @@ class DashboardWindow(tk.Tk):
         btn_frame.pack(pady=15)
         style = {"bg": "#2563eb", "fg": "white", "relief": "flat", "font": ("Arial", 11, "bold")}
         
+        # Determinar qué botones mostrar según el rol y la sección
+        buttons_to_show = self.get_allowed_buttons(section)
+        
         # Botones CRUD con funcionalidad
-        tk.Button(btn_frame, text="Agregar", width=12, 
-                 command=lambda: self.add_record(section), **style).pack(side="left", padx=15)
-        tk.Button(btn_frame, text="Editar", width=12, 
-                 command=lambda: self.edit_record(table, section), **style).pack(side="left", padx=15)
-        tk.Button(btn_frame, text="Eliminar", width=12, 
-                 command=lambda: self.delete_record(table, section), **style).pack(side="left", padx=15)
-        tk.Button(btn_frame, text="Buscar", width=12, 
-                 command=lambda: self.search_records(table, section), **style).pack(side="left", padx=15)
-        tk.Button(btn_frame, text="Refrescar", width=12, 
-                 command=lambda: self.refresh_section(section), **style).pack(side="left", padx=15)
+        if "agregar" in buttons_to_show:
+            tk.Button(btn_frame, text="Agregar", width=12, 
+                     command=lambda: self.add_record(section), **style).pack(side="left", padx=15)
+        if "editar" in buttons_to_show:
+            tk.Button(btn_frame, text="Editar", width=12, 
+                     command=lambda: self.edit_record(table, section), **style).pack(side="left", padx=15)
+        if "eliminar" in buttons_to_show:
+            tk.Button(btn_frame, text="Eliminar", width=12, 
+                     command=lambda: self.delete_record(table, section), **style).pack(side="left", padx=15)
+        if "buscar" in buttons_to_show:
+            tk.Button(btn_frame, text="Buscar", width=12, 
+                     command=lambda: self.search_records(table, section), **style).pack(side="left", padx=15)
+        if "refrescar" in buttons_to_show:
+            tk.Button(btn_frame, text="Refrescar", width=12, 
+                     command=lambda: self.refresh_section(section), **style).pack(side="left", padx=15)
+
+    def get_allowed_buttons(self, section):
+        """Determinar qué botones CRUD puede usar el usuario según su rol."""
+        if self.rol == "admin":
+            if section == "usuarios":
+                return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
+            elif section in ["pacientes", "enfermedades"]:
+                return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
+            elif section in ["diagnosticos", "historial"]:
+                return ["buscar", "refrescar"]  # Solo lectura para admin
+        elif self.rol == "medico":
+            if section == "usuarios":
+                return []  # Médicos no pueden gestionar usuarios
+            elif section in ["pacientes", "enfermedades"]:
+                return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
+            elif section in ["diagnosticos", "historial"]:
+                return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
+        elif self.rol == "auxiliar":
+            # Auxiliares solo pueden ver y buscar
+            return ["buscar", "refrescar"]
+        else:
+            # Rol desconocido - acceso mínimo
+            return ["buscar", "refrescar"]
+        
+        return ["buscar", "refrescar"]  # Por defecto, al menos buscar y refrescar
+
+    def has_permission(self, action, section):
+        """Verificar si el usuario tiene permisos para realizar una acción."""
+        allowed_buttons = self.get_allowed_buttons(section)
+        return action in allowed_buttons
 
     # ====== Métodos CRUD ======
     def add_record(self, section):
         """Agregar un nuevo registro."""
+        # Verificar permisos
+        if not self.has_permission("agregar", section):
+            messagebox.showwarning("Sin Permisos", f"No tienes permisos para agregar {section}")
+            return
+            
         if section == "usuarios":
             self.show_usuario_form()
         elif section == "pacientes":
@@ -289,6 +358,11 @@ class DashboardWindow(tk.Tk):
 
     def edit_record(self, table, section):
         """Editar un registro seleccionado."""
+        # Verificar permisos
+        if not self.has_permission("editar", section):
+            messagebox.showwarning("Sin Permisos", f"No tienes permisos para editar {section}")
+            return
+            
         selected = table.selection()
         if not selected:
             messagebox.showwarning("Aviso", "Selecciona un registro para editar")
@@ -310,6 +384,11 @@ class DashboardWindow(tk.Tk):
 
     def delete_record(self, table, section):
         """Eliminar un registro seleccionado."""
+        # Verificar permisos
+        if not self.has_permission("eliminar", section):
+            messagebox.showwarning("Sin Permisos", f"No tienes permisos para eliminar {section}")
+            return
+            
         selected = table.selection()
         if not selected:
             messagebox.showwarning("Aviso", "Selecciona un registro para eliminar")
@@ -463,8 +542,15 @@ class DashboardWindow(tk.Tk):
         
         tk.Label(form_window, text="Rol:", bg="white").pack(pady=5)
         rol_var = tk.StringVar(value="medico")
+        
+        # Solo admin puede crear otros admins
+        if self.rol == "admin":
+            rol_values = ["admin", "medico", "auxiliar"]
+        else:
+            rol_values = ["medico", "auxiliar"]  # Médicos solo pueden crear médicos y auxiliares
+            
         rol_combo = ttk.Combobox(form_window, textvariable=rol_var, 
-                                values=["admin", "medico", "auxiliar"], state="readonly")
+                                values=rol_values, state="readonly")
         rol_combo.pack(pady=5)
         
         tk.Label(form_window, text="Correo:", bg="white").pack(pady=5)
@@ -506,6 +592,11 @@ class DashboardWindow(tk.Tk):
             
             if not self.validate_phone(data['telefono']):
                 messagebox.showerror("Error", "Formato de teléfono inválido")
+                return
+            
+            # Verificar permisos para crear usuarios admin
+            if data['rol'] == "admin" and self.rol != "admin":
+                messagebox.showerror("Error", "Solo los administradores pueden crear usuarios con rol admin")
                 return
             
             # Verificar si el usuario ya existe (solo para nuevos usuarios)
