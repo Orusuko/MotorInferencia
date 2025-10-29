@@ -206,18 +206,26 @@ class DashboardWindow(tk.Tk):
         columns = ("ID", "Paciente", "Médico", "Fecha", "Notas")
         table = self.create_table(columns)
         
-        # Obtener diagnósticos de la base de datos con información de paciente y médico
-        query = """
-        SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
-               u.nombre as medico_nombre, d.fecha_diagnostico, d.notas
-        FROM diagnosticos d
-        JOIN pacientes p ON d.paciente_id = p.id
-        JOIN usuarios u ON d.usuario_id = u.id
-        ORDER BY d.fecha_diagnostico DESC
-        """
-        diagnosticos_data = db.select(query)
-        if diagnosticos_data:
-            self.insert_data(table, diagnosticos_data)
+        # Obtener diagnósticos directamente con conexión
+        try:
+            conn = db.create_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
+                           u.nombre as medico_nombre, d.fecha_diagnostico, d.notas
+                    FROM diagnosticos d
+                    JOIN pacientes p ON d.paciente_id = p.id
+                    JOIN usuarios u ON d.usuario_id = u.id
+                    ORDER BY d.fecha_diagnostico DESC
+                """)
+                diagnosticos_data = cursor.fetchall()
+                conn.close()
+                
+                if diagnosticos_data:
+                    self.insert_data(table, diagnosticos_data)
+        except Exception as e:
+            print(f"Error: {e}")
         
         self.create_crud_buttons(table, "diagnosticos")
 
@@ -225,13 +233,39 @@ class DashboardWindow(tk.Tk):
     def show_enfermedades(self):
         self.clear_content("Enfermedades")
 
-        columns = ("ID", "Nombre", "Descripción", "Tratamiento Base")
+        columns = ("ID", "Nombre", "Descripción", "Síntomas", "Tratamiento Base")
         table = self.create_table(columns)
         
         # Obtener enfermedades de la base de datos
-        enfermedades_data = db.select('enfermedades', 'id, nombre, descripcion, tratamiento_base')
-        if enfermedades_data:
-            self.insert_data(table, enfermedades_data)
+        enfermedades_base = db.select('enfermedades', 'id, nombre, descripcion, tratamiento_base')
+        
+        if enfermedades_base:
+            # Para cada enfermedad, obtener sus síntomas
+            enfermedades_con_sintomas = []
+            try:
+                conn = db.create_connection()
+                if conn:
+                    cursor = conn.cursor()
+                    for enf in enfermedades_base:
+                        enf_id = enf[0]
+                        # Obtener síntomas asociados directamente
+                        cursor.execute("""
+                            SELECT GROUP_CONCAT(s.nombre, ', ')
+                            FROM sintomas s
+                            JOIN enfermedad_sintoma es ON s.id = es.sintoma_id
+                            WHERE es.enfermedad_id = ?
+                        """, (enf_id,))
+                        sintomas_result = cursor.fetchone()
+                        sintomas_str = sintomas_result[0] if sintomas_result and sintomas_result[0] else "Sin síntomas"
+                        
+                        # Agregar fila: id, nombre, descripcion, sintomas, tratamiento
+                        enfermedades_con_sintomas.append((enf[0], enf[1], enf[2], sintomas_str, enf[3]))
+                    
+                    conn.close()
+            except Exception as e:
+                print(f"Error al cargar síntomas: {e}")
+            
+            self.insert_data(table, enfermedades_con_sintomas)
         
         self.create_crud_buttons(table, "enfermedades")
 
@@ -243,23 +277,31 @@ class DashboardWindow(tk.Tk):
         table = self.create_table(columns)
         
         # Obtener historial de diagnósticos de la base de datos
-        query = """
-        SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
-               GROUP_CONCAT(e.nombre, ', ') as enfermedades,
-               d.fecha_diagnostico, u.nombre as medico_nombre
-        FROM diagnosticos d
-        JOIN pacientes p ON d.paciente_id = p.id
-        JOIN usuarios u ON d.usuario_id = u.id
-        LEFT JOIN diagnostico_enfermedad de ON d.id = de.diagnostico_id
-        LEFT JOIN enfermedades e ON de.enfermedad_id = e.id
-        GROUP BY d.id
-        ORDER BY d.fecha_diagnostico DESC
-        """
-        historial_data = db.select(query)
-        if historial_data:
-            self.insert_data(table, historial_data)
+        try:
+            conn = db.create_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT d.id, p.nombre || ' ' || p.apellido as paciente_nombre, 
+                           GROUP_CONCAT(e.nombre, ', ') as enfermedades,
+                           d.fecha_diagnostico, u.nombre as medico_nombre
+                    FROM diagnosticos d
+                    JOIN pacientes p ON d.paciente_id = p.id
+                    JOIN usuarios u ON d.usuario_id = u.id
+                    LEFT JOIN diagnostico_enfermedad de ON d.id = de.diagnostico_id
+                    LEFT JOIN enfermedades e ON de.enfermedad_id = e.id
+                    GROUP BY d.id
+                    ORDER BY d.fecha_diagnostico DESC
+                """)
+                historial_data = cursor.fetchall()
+                conn.close()
+                
+                if historial_data:
+                    self.insert_data(table, historial_data)
+        except Exception as e:
+            print(f"Error al cargar historial: {e}")
         
-        self.create_crud_buttons(table, "historial")
+        self.create_crud_buttons(table, "diagnosticos")
 
     # ====== Utilidades ======
     def clear_content(self, title):
