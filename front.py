@@ -2,8 +2,12 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 import re
 from datetime import datetime
-from models import Usuario, Paciente, Enfermedad, Diagnostico, Sintoma, Signo
+from models import Usuario, Paciente, Enfermedad, Diagnostico, Sintoma, Signo, PruebaLb, PruebaPostMortem
 from database import db
+from report_generator import ReportGenerator
+import tempfile
+import os
+import webbrowser
 
 # ======== Pantalla de Login ========
 class LoginWindow(tk.Tk):
@@ -94,25 +98,35 @@ class DashboardWindow(tk.Tk):
     def create_menu_buttons(self, sidebar):
         """Crear botones del menú según el rol del usuario."""
         if self.rol == "admin":
-            # Admin puede ver usuarios y gestionar el sistema
+            # Admin puede gestionar todo el sistema
             menu_items = [
                 ("Usuarios", self.show_usuarios),
                 ("Pacientes", self.show_pacientes),
                 ("Enfermedades", self.show_enfermedades),
+                ("Síntomas", self.show_sintomas),
+                ("Signos", self.show_signos),
+                ("Pruebas Lb", self.show_pruebas_lb),
+                ("Pruebas Post-Mortem", self.show_pruebas_post_mortem),
                 ("Historial", self.show_historial)
             ]
         elif self.rol == "medico":
-            # Médico puede ver pacientes, diagnosticar y ver historial
+            # Médico puede ver pacientes, diagnosticar y ver datos del sistema
             menu_items = [
                 ("Pacientes", self.show_pacientes),
                 ("Diagnósticos", self.show_diagnosticos),
                 ("Enfermedades", self.show_enfermedades),
+                ("Síntomas", self.show_sintomas),
+                ("Signos", self.show_signos),
+                ("Pruebas Lb", self.show_pruebas_lb),
+                ("Pruebas Post-Mortem", self.show_pruebas_post_mortem),
                 ("Historial", self.show_historial)
             ]
         elif self.rol == "auxiliar":
-            # Auxiliar puede ver pacientes y historial (solo lectura)
+            # Auxiliar puede ver pacientes y datos del sistema (solo lectura)
             menu_items = [
                 ("Pacientes", self.show_pacientes),
+                ("Síntomas", self.show_sintomas),
+                ("Signos", self.show_signos),
                 ("Historial", self.show_historial)
             ]
         else:
@@ -301,6 +315,14 @@ class DashboardWindow(tk.Tk):
         except Exception as e:
             print(f"Error al cargar historial: {e}")
         
+        # Bind doble clic para ver reporte detallado
+        table.bind("<Double-1>", lambda event: self.show_report(table, event))
+        
+        # Instrucción
+        instruction = tk.Label(self.content, text="💡 Haz doble clic en un registro para ver el reporte completo",
+                              font=("Arial", 10), bg="white", fg="#666666")
+        instruction.pack(pady=5)
+        
         self.create_crud_buttons(table, "diagnosticos")
 
     # ====== Utilidades ======
@@ -354,17 +376,21 @@ class DashboardWindow(tk.Tk):
         if self.rol == "admin":
             if section == "usuarios":
                 return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
-            elif section in ["pacientes", "enfermedades"]:
+            elif section in ["pacientes", "enfermedades", "sintomas", "signos", "pruebas_lb", "pruebas_post_mortem"]:
                 return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
             elif section in ["diagnosticos", "historial"]:
                 return ["buscar", "refrescar"]  # Solo lectura para admin
         elif self.rol == "medico":
             if section == "usuarios":
                 return []  # Médicos no pueden gestionar usuarios
-            elif section in ["pacientes", "enfermedades"]:
+            elif section in ["pacientes"]:
                 return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
-            elif section in ["diagnosticos", "historial"]:
+            elif section in ["enfermedades", "sintomas", "signos", "pruebas_lb", "pruebas_post_mortem"]:
+                return ["buscar", "refrescar"]  # Solo lectura para médico
+            elif section in ["diagnosticos"]:
                 return ["agregar", "editar", "eliminar", "buscar", "refrescar"]
+            elif section in ["historial"]:
+                return ["buscar", "refrescar"]
         elif self.rol == "auxiliar":
             # Auxiliares solo pueden ver y buscar
             return ["buscar", "refrescar"]
@@ -393,6 +419,14 @@ class DashboardWindow(tk.Tk):
             self.show_paciente_form()
         elif section == "enfermedades":
             self.show_enfermedad_form()
+        elif section == "sintomas":
+            self.show_sintoma_form()
+        elif section == "signos":
+            self.show_signo_form()
+        elif section == "pruebas_lb":
+            self.show_prueba_lb_form()
+        elif section == "pruebas_post_mortem":
+            self.show_prueba_post_mortem_form()
         elif section == "diagnosticos":
             self.show_diagnostico_form()
         else:
@@ -419,6 +453,14 @@ class DashboardWindow(tk.Tk):
             self.show_paciente_form(record_id)
         elif section == "enfermedades":
             self.show_enfermedad_form(record_id)
+        elif section == "sintomas":
+            self.show_sintoma_form(record_id)
+        elif section == "signos":
+            self.show_signo_form(record_id)
+        elif section == "pruebas_lb":
+            self.show_prueba_lb_form(record_id)
+        elif section == "pruebas_post_mortem":
+            self.show_prueba_post_mortem_form(record_id)
         elif section == "diagnosticos":
             self.show_diagnostico_form(record_id)
         else:
@@ -450,6 +492,14 @@ class DashboardWindow(tk.Tk):
                     self.show_pacientes()
                 elif section == "enfermedades":
                     self.show_enfermedades()
+                elif section == "sintomas":
+                    self.show_sintomas()
+                elif section == "signos":
+                    self.show_signos()
+                elif section == "pruebas_lb":
+                    self.show_pruebas_lb()
+                elif section == "pruebas_post_mortem":
+                    self.show_pruebas_post_mortem()
                 elif section == "diagnosticos":
                     self.show_diagnosticos()
                 elif section == "historial":
@@ -556,6 +606,14 @@ class DashboardWindow(tk.Tk):
             self.show_pacientes()
         elif section == "enfermedades":
             self.show_enfermedades()
+        elif section == "sintomas":
+            self.show_sintomas()
+        elif section == "signos":
+            self.show_signos()
+        elif section == "pruebas_lb":
+            self.show_pruebas_lb()
+        elif section == "pruebas_post_mortem":
+            self.show_pruebas_post_mortem()
         elif section == "diagnosticos":
             self.show_diagnosticos()
         elif section == "historial":
@@ -841,6 +899,361 @@ class DashboardWindow(tk.Tk):
         
         tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
                  command=save_enfermedad).pack(pady=20)
+
+    def show_sintomas(self):
+        """Mostrar lista de síntomas."""
+        self.clear_content("Síntomas")
+
+        columns = ("ID", "Nombre", "Descripción")
+        table = self.create_table(columns)
+        
+        # Obtener síntomas de la base de datos
+        sintomas_data = db.select('sintomas', 'id, nombre, descripcion')
+        if sintomas_data:
+            self.insert_data(table, sintomas_data)
+        
+        self.create_crud_buttons(table, "sintomas")
+
+    def show_signos(self):
+        """Mostrar lista de signos."""
+        self.clear_content("Signos")
+
+        columns = ("ID", "Nombre", "Descripción")
+        table = self.create_table(columns)
+        
+        # Obtener signos de la base de datos
+        signos_data = db.select('signos', 'id, nombre, descripcion')
+        if signos_data:
+            self.insert_data(table, signos_data)
+        
+        self.create_crud_buttons(table, "signos")
+
+    def show_pruebas_lb(self):
+        """Mostrar lista de pruebas de laboratorio."""
+        self.clear_content("Pruebas de Laboratorio")
+
+        columns = ("ID", "Nombre", "Descripción", "Rango Normal", "Unidades")
+        table = self.create_table(columns)
+        
+        # Obtener pruebas de laboratorio de la base de datos
+        pruebas_data = db.select('pruebas_lb', 'id, nombre, descripcion, rango_normal, unidades')
+        if pruebas_data:
+            self.insert_data(table, pruebas_data)
+        
+        self.create_crud_buttons(table, "pruebas_lb")
+
+    def show_pruebas_post_mortem(self):
+        """Mostrar lista de pruebas post-mortem."""
+        self.clear_content("Pruebas Post-Mortem")
+
+        columns = ("ID", "Nombre", "Descripción", "Procedimiento")
+        table = self.create_table(columns)
+        
+        # Obtener pruebas post-mortem de la base de datos
+        pruebas_data = db.select('pruebas_post_mortem', 'id, nombre, descripcion, procedimiento')
+        if pruebas_data:
+            self.insert_data(table, pruebas_data)
+        
+        self.create_crud_buttons(table, "pruebas_post_mortem")
+
+    def show_sintoma_form(self, sintoma_id=None):
+        """Mostrar formulario de síntoma."""
+        form_window = tk.Toplevel(self)
+        form_window.title("Agregar Síntoma" if not sintoma_id else "Editar Síntoma")
+        form_window.geometry("500x300")
+        form_window.config(bg="white")
+        
+        # Campos del formulario
+        tk.Label(form_window, text="Nombre:", bg="white").pack(pady=5)
+        nombre_entry = tk.Entry(form_window, width=50)
+        nombre_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Descripción:", bg="white").pack(pady=5)
+        descripcion_text = tk.Text(form_window, width=50, height=6)
+        descripcion_text.pack(pady=5)
+        
+        # Cargar datos si es edición
+        if sintoma_id:
+            sintoma_data = db.select('sintomas', where="id = ?", params=(sintoma_id,), fetch_one=True)
+            if sintoma_data:
+                nombre_entry.insert(0, sintoma_data[1])
+                descripcion_text.insert("1.0", sintoma_data[2] or "")
+        
+        def save_sintoma():
+            data = {
+                'nombre': nombre_entry.get().strip(),
+                'descripcion': descripcion_text.get("1.0", tk.END).strip()
+            }
+            
+            # Validaciones
+            if not data['nombre']:
+                messagebox.showerror("Error", "Completa el nombre del síntoma")
+                return
+            
+            # Verificar si el síntoma ya existe (solo para nuevos síntomas)
+            if not sintoma_id:
+                existing_sintoma = db.select('sintomas', where="nombre = ?", params=(data['nombre'],), fetch_one=True)
+                if existing_sintoma:
+                    messagebox.showerror("Error", "Ya existe un síntoma con ese nombre")
+                    return
+            
+            try:
+                if sintoma_id:
+                    if db.update('sintomas', sintoma_id, data):
+                        messagebox.showinfo("Éxito", "Síntoma actualizado correctamente")
+                        form_window.destroy()
+                        self.show_sintomas()
+                    else:
+                        messagebox.showerror("Error", "No se pudo actualizar el síntoma")
+                else:
+                    if db.insert('sintomas', data):
+                        messagebox.showinfo("Éxito", "Síntoma creado correctamente")
+                        form_window.destroy()
+                        self.show_sintomas()
+                    else:
+                        messagebox.showerror("Error", "No se pudo crear el síntoma")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar síntoma: {str(e)}")
+        
+        tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
+                 command=save_sintoma).pack(pady=20)
+
+    def show_signo_form(self, signo_id=None):
+        """Mostrar formulario de signo."""
+        form_window = tk.Toplevel(self)
+        form_window.title("Agregar Signo" if not signo_id else "Editar Signo")
+        form_window.geometry("500x300")
+        form_window.config(bg="white")
+        
+        # Campos del formulario
+        tk.Label(form_window, text="Nombre:", bg="white").pack(pady=5)
+        nombre_entry = tk.Entry(form_window, width=50)
+        nombre_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Descripción:", bg="white").pack(pady=5)
+        descripcion_text = tk.Text(form_window, width=50, height=6)
+        descripcion_text.pack(pady=5)
+        
+        # Cargar datos si es edición
+        if signo_id:
+            signo_data = db.select('signos', where="id = ?", params=(signo_id,), fetch_one=True)
+            if signo_data:
+                nombre_entry.insert(0, signo_data[1])
+                descripcion_text.insert("1.0", signo_data[2] or "")
+        
+        def save_signo():
+            data = {
+                'nombre': nombre_entry.get().strip(),
+                'descripcion': descripcion_text.get("1.0", tk.END).strip()
+            }
+            
+            # Validaciones
+            if not data['nombre']:
+                messagebox.showerror("Error", "Completa el nombre del signo")
+                return
+            
+            # Verificar si el signo ya existe (solo para nuevos signos)
+            if not signo_id:
+                existing_signo = db.select('signos', where="nombre = ?", params=(data['nombre'],), fetch_one=True)
+                if existing_signo:
+                    messagebox.showerror("Error", "Ya existe un signo con ese nombre")
+                    return
+            
+            try:
+                if signo_id:
+                    if db.update('signos', signo_id, data):
+                        messagebox.showinfo("Éxito", "Signo actualizado correctamente")
+                        form_window.destroy()
+                        self.show_signos()
+                    else:
+                        messagebox.showerror("Error", "No se pudo actualizar el signo")
+                else:
+                    if db.insert('signos', data):
+                        messagebox.showinfo("Éxito", "Signo creado correctamente")
+                        form_window.destroy()
+                        self.show_signos()
+                    else:
+                        messagebox.showerror("Error", "No se pudo crear el signo")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar signo: {str(e)}")
+        
+        tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
+                 command=save_signo).pack(pady=20)
+
+    def show_prueba_lb_form(self, prueba_id=None):
+        """Mostrar formulario de prueba de laboratorio."""
+        form_window = tk.Toplevel(self)
+        form_window.title("Agregar Prueba Lb" if not prueba_id else "Editar Prueba Lb")
+        form_window.geometry("500x400")
+        form_window.config(bg="white")
+        
+        # Campos del formulario
+        tk.Label(form_window, text="Nombre:", bg="white").pack(pady=5)
+        nombre_entry = tk.Entry(form_window, width=50)
+        nombre_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Descripción:", bg="white").pack(pady=5)
+        descripcion_text = tk.Text(form_window, width=50, height=4)
+        descripcion_text.pack(pady=5)
+        
+        tk.Label(form_window, text="Rango Normal:", bg="white").pack(pady=5)
+        rango_entry = tk.Entry(form_window, width=50)
+        rango_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Unidades:", bg="white").pack(pady=5)
+        unidades_entry = tk.Entry(form_window, width=50)
+        unidades_entry.pack(pady=5)
+        
+        # Cargar datos si es edición
+        if prueba_id:
+            prueba_data = db.select('pruebas_lb', where="id = ?", params=(prueba_id,), fetch_one=True)
+            if prueba_data:
+                nombre_entry.insert(0, prueba_data[1])
+                descripcion_text.insert("1.0", prueba_data[2] or "")
+                rango_entry.insert(0, prueba_data[3] or "")
+                unidades_entry.insert(0, prueba_data[4] or "")
+        
+        def save_prueba():
+            data = {
+                'nombre': nombre_entry.get().strip(),
+                'descripcion': descripcion_text.get("1.0", tk.END).strip(),
+                'rango_normal': rango_entry.get().strip(),
+                'unidades': unidades_entry.get().strip()
+            }
+            
+            # Validaciones
+            if not data['nombre']:
+                messagebox.showerror("Error", "Completa el nombre de la prueba")
+                return
+            
+            # Verificar si la prueba ya existe (solo para nuevas pruebas)
+            if not prueba_id:
+                existing_prueba = db.select('pruebas_lb', where="nombre = ?", params=(data['nombre'],), fetch_one=True)
+                if existing_prueba:
+                    messagebox.showerror("Error", "Ya existe una prueba con ese nombre")
+                    return
+            
+            try:
+                if prueba_id:
+                    if db.update('pruebas_lb', prueba_id, data):
+                        messagebox.showinfo("Éxito", "Prueba actualizada correctamente")
+                        form_window.destroy()
+                        self.show_pruebas_lb()
+                    else:
+                        messagebox.showerror("Error", "No se pudo actualizar la prueba")
+                else:
+                    if db.insert('pruebas_lb', data):
+                        messagebox.showinfo("Éxito", "Prueba creada correctamente")
+                        form_window.destroy()
+                        self.show_pruebas_lb()
+                    else:
+                        messagebox.showerror("Error", "No se pudo crear la prueba")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar prueba: {str(e)}")
+        
+        tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
+                 command=save_prueba).pack(pady=20)
+
+    def show_prueba_post_mortem_form(self, prueba_id=None):
+        """Mostrar formulario de prueba post-mortem."""
+        form_window = tk.Toplevel(self)
+        form_window.title("Agregar Prueba Post-Mortem" if not prueba_id else "Editar Prueba Post-Mortem")
+        form_window.geometry("500x450")
+        form_window.config(bg="white")
+        
+        # Campos del formulario
+        tk.Label(form_window, text="Nombre:", bg="white").pack(pady=5)
+        nombre_entry = tk.Entry(form_window, width=50)
+        nombre_entry.pack(pady=5)
+        
+        tk.Label(form_window, text="Descripción:", bg="white").pack(pady=5)
+        descripcion_text = tk.Text(form_window, width=50, height=4)
+        descripcion_text.pack(pady=5)
+        
+        tk.Label(form_window, text="Procedimiento:", bg="white").pack(pady=5)
+        procedimiento_text = tk.Text(form_window, width=50, height=6)
+        procedimiento_text.pack(pady=5)
+        
+        # Cargar datos si es edición
+        if prueba_id:
+            prueba_data = db.select('pruebas_post_mortem', where="id = ?", params=(prueba_id,), fetch_one=True)
+            if prueba_data:
+                nombre_entry.insert(0, prueba_data[1])
+                descripcion_text.insert("1.0", prueba_data[2] or "")
+                procedimiento_text.insert("1.0", prueba_data[3] or "")
+        
+        def save_prueba():
+            data = {
+                'nombre': nombre_entry.get().strip(),
+                'descripcion': descripcion_text.get("1.0", tk.END).strip(),
+                'procedimiento': procedimiento_text.get("1.0", tk.END).strip()
+            }
+            
+            # Validaciones
+            if not data['nombre']:
+                messagebox.showerror("Error", "Completa el nombre de la prueba")
+                return
+            
+            # Verificar si la prueba ya existe (solo para nuevas pruebas)
+            if not prueba_id:
+                existing_prueba = db.select('pruebas_post_mortem', where="nombre = ?", params=(data['nombre'],), fetch_one=True)
+                if existing_prueba:
+                    messagebox.showerror("Error", "Ya existe una prueba con ese nombre")
+                    return
+            
+            try:
+                if prueba_id:
+                    if db.update('pruebas_post_mortem', prueba_id, data):
+                        messagebox.showinfo("Éxito", "Prueba actualizada correctamente")
+                        form_window.destroy()
+                        self.show_pruebas_post_mortem()
+                    else:
+                        messagebox.showerror("Error", "No se pudo actualizar la prueba")
+                else:
+                    if db.insert('pruebas_post_mortem', data):
+                        messagebox.showinfo("Éxito", "Prueba creada correctamente")
+                        form_window.destroy()
+                        self.show_pruebas_post_mortem()
+                    else:
+                        messagebox.showerror("Error", "No se pudo crear la prueba")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar prueba: {str(e)}")
+        
+        tk.Button(form_window, text="Guardar", bg="#2563eb", fg="white",
+                 command=save_prueba).pack(pady=20)
+
+    def show_report(self, table, event):
+        """Mostrar reporte HTML detallado de un diagnóstico."""
+        selection = table.selection()
+        if not selection:
+            return
+        
+        item = table.item(selection[0])
+        diagnostico_id = item['values'][0]
+        
+        try:
+            # Generar reporte HTML
+            html_content = ReportGenerator.generate_diagnosis_report(diagnostico_id)
+            
+            if not html_content:
+                messagebox.showerror("Error", "No se pudo generar el reporte")
+                return
+            
+            # Crear archivo temporal
+            temp_dir = tempfile.gettempdir()
+            temp_file = os.path.join(temp_dir, f"diagnostico_{diagnostico_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")
+            
+            # Guardar HTML en archivo temporal
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            # Abrir en navegador por defecto
+            webbrowser.open('file://' + temp_file)
+            
+            messagebox.showinfo("Éxito", "El reporte se está abriendo en tu navegador predeterminado...")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al abrir reporte: {str(e)}")
 
     def show_diagnostico_form(self, diagnostico_id=None):
         """Mostrar formulario de diagnóstico."""

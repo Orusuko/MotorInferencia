@@ -531,3 +531,57 @@ class MotorInferencia:
             return []
         finally:
             conn.close()
+
+@dataclass
+class PruebaLb(Model):
+    """Laboratory Test model for clinical tests."""
+    id: Optional[int] = None
+    nombre: str = ""
+    descripcion: str = ""
+    rango_normal: str = ""
+    unidades: str = ""
+    fecha_creacion: str = field(default_factory=lambda: datetime.now().isoformat())
+    
+    def save(self) -> bool:
+        """Save laboratory test to database."""
+        data = {
+            'nombre': self.nombre,
+            'descripcion': self.descripcion,
+            'rango_normal': self.rango_normal,
+            'unidades': self.unidades
+        }
+        
+        if self.id:
+            return db.update('pruebas_lb', self.id, data)
+        else:
+            prueba_id = db.insert('pruebas_lb', data)
+            if prueba_id:
+                self.id = prueba_id
+                return True
+            return False
+
+@dataclass
+class PruebaPostMortem(Model):
+    """Post-Mortem Test model for autopsy procedures."""
+    id: Optional[int] = None
+    nombre: str = ""
+    descripcion: str = ""
+    procedimiento: str = ""
+    fecha_creacion: str = field(default_factory=lambda: datetime.now().isoformat())
+    
+    def save(self) -> bool:
+        """Save post-mortem test to database."""
+        data = {
+            'nombre': self.nombre,
+            'descripcion': self.descripcion,
+            'procedimiento': self.procedimiento
+        }
+        
+        if self.id:
+            return db.update('pruebas_post_mortem', self.id, data)
+        else:
+            prueba_id = db.insert('pruebas_post_mortem', data)
+            if prueba_id:
+                self.id = prueba_id
+                return True
+            return False

@@ -134,6 +134,25 @@ class Database:
                 FOREIGN KEY (diagnostico_id) REFERENCES diagnosticos (id) ON DELETE CASCADE,
                 FOREIGN KEY (signo_id) REFERENCES signos (id) ON DELETE CASCADE
             )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS pruebas_lb (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL UNIQUE,
+                descripcion TEXT,
+                rango_normal TEXT,
+                unidades TEXT,
+                fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS pruebas_post_mortem (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL UNIQUE,
+                descripcion TEXT,
+                procedimiento TEXT,
+                fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP
+            )
             """
         ]
 
