@@ -1256,8 +1256,254 @@ class DashboardWindow(tk.Tk):
             messagebox.showerror("Error", f"Error al abrir reporte: {str(e)}")
 
     def show_diagnostico_form(self, diagnostico_id=None):
-        """Mostrar formulario de diagnóstico."""
-        messagebox.showinfo("Info", "Formulario de diagnóstico en desarrollo")
+        """Mostrar formulario de diagnóstico con motor de inferencia."""
+        if diagnostico_id:
+            messagebox.showinfo("Info", "La edición de diagnósticos no está disponible actualmente")
+            return
+        
+        # Obtener datos necesarios
+        usuario_data = db.select('usuarios', where="nombre = ?", params=(self.username,), fetch_one=True)
+        if not usuario_data:
+            messagebox.showerror("Error", "No se pudo obtener información del usuario")
+            return
+        usuario_id = usuario_data[0]
+        
+        pacientes = db.select('pacientes', 'id, nombre, apellido, fecha_nacimiento')
+        if not pacientes:
+            messagebox.showerror("Error", "No hay pacientes registrados. Crea uno primero.")
+            return
+        
+        sintomas = db.select('sintomas', 'id, nombre, descripcion')
+        if not sintomas:
+            messagebox.showerror("Error", "No hay síntomas registrados.")
+            return
+        
+        signos = db.select('signos', 'id, nombre, descripcion')
+        if not signos:
+            messagebox.showwarning("Aviso", "No hay signos registrados (opcional).")
+            signos = []
+        
+        enfermedades = db.select('enfermedades', 'id, nombre, descripcion, tratamiento_base')
+        if not enfermedades:
+            messagebox.showerror("Error", "No hay enfermedades registradas.")
+            return
+        
+        # Crear ventana principal
+        form_window = tk.Toplevel(self)
+        form_window.title("Nueva Consulta Médica - Motor de Inferencia")
+        form_window.geometry("900x900")
+        form_window.config(bg="white")
+        
+        # Marco con scroll
+        main_frame = tk.Frame(form_window, bg="white")
+        main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        canvas = tk.Canvas(main_frame, bg="white", highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="white")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Título
+        title_label = tk.Label(scrollable_frame, text="🏥 Nueva Consulta Médica", 
+                              font=("Arial", 16, "bold"), bg="white", fg="#1e40af")
+        title_label.pack(pady=15)
+        
+        # ============ SECCIÓN 1: PACIENTE ============
+        paciente_frame = tk.LabelFrame(scrollable_frame, text="👤 Paciente", bg="white", fg="#1e40af", 
+                                       font=("Arial", 12, "bold"), padx=15, pady=10)
+        paciente_frame.pack(fill="x", padx=0, pady=10)
+        
+        pacientes_dict = {f"{p[1]} {p[2]}": p for p in pacientes}
+        paciente_var = tk.StringVar()
+        paciente_combo = ttk.Combobox(paciente_frame, textvariable=paciente_var,
+                                      values=list(pacientes_dict.keys()), state="readonly", width=50)
+        paciente_combo.pack(pady=5)
+        paciente_combo.set(list(pacientes_dict.keys())[0] if pacientes_dict else "")
+        
+        # ============ SECCIÓN 2: SÍNTOMAS ============
+        sintomas_frame = tk.LabelFrame(scrollable_frame, text="🔍 Síntomas Observados", bg="white", fg="#1e40af",
+                                       font=("Arial", 12, "bold"), padx=15, pady=10)
+        sintomas_frame.pack(fill="both", expand=True, padx=0, pady=10)
+        
+        tk.Label(sintomas_frame, text="Selecciona los síntomas que presenta el paciente:", 
+                bg="white", font=("Arial", 10)).pack(pady=5)
+        
+        canvas_frame = tk.Frame(sintomas_frame, bg="white")
+        canvas_frame.pack(fill="both", expand=True, pady=5)
+        
+        canvas_sint = tk.Canvas(canvas_frame, bg="white", highlightthickness=0, height=150)
+        scrollbar_sint = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas_sint.yview)
+        scrollable_sintomas = tk.Frame(canvas_sint, bg="white")
+        
+        scrollable_sintomas.bind(
+            "<Configure>",
+            lambda e: canvas_sint.configure(scrollregion=canvas_sint.bbox("all"))
+        )
+        
+        canvas_sint.create_window((0, 0), window=scrollable_sintomas, anchor="nw")
+        canvas_sint.configure(yscrollcommand=scrollbar_sint.set)
+        canvas_sint.pack(side="left", fill="both", expand=True)
+        scrollbar_sint.pack(side="right", fill="y")
+        
+        sintomas_vars = {}
+        for sintoma in sintomas:
+            var = tk.BooleanVar()
+            sintomas_vars[sintoma[0]] = var
+            
+            frame = tk.Frame(scrollable_sintomas, bg="white")
+            frame.pack(fill="x", pady=3, padx=5)
+            
+            cb = tk.Checkbutton(frame, text=f"{sintoma[1]}", variable=var, bg="white",
+                               font=("Arial", 10), activebackground="white")
+            cb.pack(anchor="w")
+        
+        # ============ SECCIÓN 3: SIGNOS ============
+        signos_frame = tk.LabelFrame(scrollable_frame, text="📊 Signos Observados", bg="white", fg="#1e40af",
+                                     font=("Arial", 12, "bold"), padx=15, pady=10)
+        signos_frame.pack(fill="both", expand=True, padx=0, pady=10)
+        
+        tk.Label(signos_frame, text="Selecciona los signos observados (opcional):", 
+                bg="white", font=("Arial", 10)).pack(pady=5)
+        
+        canvas_frame2 = tk.Frame(signos_frame, bg="white")
+        canvas_frame2.pack(fill="both", expand=True, pady=5)
+        
+        canvas_sign = tk.Canvas(canvas_frame2, bg="white", highlightthickness=0, height=100)
+        scrollbar_sign = tk.Scrollbar(canvas_frame2, orient="vertical", command=canvas_sign.yview)
+        scrollable_signos = tk.Frame(canvas_sign, bg="white")
+        
+        scrollable_signos.bind(
+            "<Configure>",
+            lambda e: canvas_sign.configure(scrollregion=canvas_sign.bbox("all"))
+        )
+        
+        canvas_sign.create_window((0, 0), window=scrollable_signos, anchor="nw")
+        canvas_sign.configure(yscrollcommand=scrollbar_sign.set)
+        canvas_sign.pack(side="left", fill="both", expand=True)
+        scrollbar_sign.pack(side="right", fill="y")
+        
+        signos_vars = {}
+        for signo in signos:
+            var = tk.BooleanVar()
+            signos_vars[signo[0]] = var
+            
+            frame = tk.Frame(scrollable_signos, bg="white")
+            frame.pack(fill="x", pady=3, padx=5)
+            
+            cb = tk.Checkbutton(frame, text=f"{signo[1]}", variable=var, bg="white",
+                               font=("Arial", 10), activebackground="white")
+            cb.pack(anchor="w")
+        
+        # ============ SECCIÓN 4: NOTAS ============
+        notas_frame = tk.LabelFrame(scrollable_frame, text="📝 Notas Adicionales", bg="white", fg="#1e40af",
+                                    font=("Arial", 12, "bold"), padx=15, pady=10)
+        notas_frame.pack(fill="both", expand=True, padx=0, pady=10)
+        
+        notas_text = tk.Text(notas_frame, width=60, height=5, font=("Arial", 10))
+        notas_text.pack(fill="both", expand=True, pady=5)
+        
+        # ============ BOTÓN ANALIZAR ============
+        def analizar_y_diagnosticar():
+            # Obtener datos seleccionados
+            paciente_nombre = paciente_var.get()
+            if not paciente_nombre:
+                messagebox.showerror("Error", "Selecciona un paciente")
+                return
+            
+            paciente_id = pacientes_dict[paciente_nombre][0]
+            
+            # Obtener síntomas seleccionados
+            sintomas_seleccionados = [sint_id for sint_id, var in sintomas_vars.items() if var.get()]
+            
+            # Obtener signos seleccionados
+            signos_seleccionados = [sign_id for sign_id, var in signos_vars.items() if var.get()]
+            
+            if not sintomas_seleccionados:
+                messagebox.showwarning("Aviso", "Selecciona al menos un síntoma")
+                return
+            
+            # Usar motor de inferencia
+            from models import MotorInferencia
+            diagnosticos_sugeridos = MotorInferencia.diagnosticar(sintomas_seleccionados, signos_seleccionados)
+            
+            if not diagnosticos_sugeridos:
+                messagebox.showwarning("Aviso", "No se encontraron enfermedades que coincidan con los síntomas")
+                return
+            
+            # Obtener el diagnóstico con mayor certeza
+            diagnostico_principal = diagnosticos_sugeridos[0]
+            
+            # Guardar diagnóstico
+            try:
+                diagnostico_data = {
+                    'paciente_id': paciente_id,
+                    'usuario_id': usuario_id,
+                    'fecha_diagnostico': datetime.now().isoformat(),
+                    'notas': notas_text.get("1.0", tk.END).strip()
+                }
+                
+                diagnostico_id = db.insert('diagnosticos', diagnostico_data)
+                
+                if diagnostico_id:
+                    # Guardar enfermedad diagnosticada
+                    conn = db.create_connection()
+                    if conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            """INSERT INTO diagnostico_enfermedad (diagnostico_id, enfermedad_id, certeza)
+                               VALUES (?, ?, ?)""",
+                            (diagnostico_id, diagnostico_principal['id'], diagnostico_principal['porcentaje'] / 100)
+                        )
+                        
+                        # Guardar síntomas
+                        for sint_id in sintomas_seleccionados:
+                            cursor.execute(
+                                """INSERT INTO diagnostico_sintoma (diagnostico_id, sintoma_id, intensidad)
+                                   VALUES (?, ?, ?)""",
+                                (diagnostico_id, sint_id, 5)  # Intensidad por defecto 5
+                            )
+                        
+                        # Guardar signos
+                        for sign_id in signos_seleccionados:
+                            cursor.execute(
+                                """INSERT INTO diagnostico_signo (diagnostico_id, signo_id, valor)
+                                   VALUES (?, ?, ?)""",
+                                (diagnostico_id, sign_id, "Presente")
+                            )
+                        
+                        conn.commit()
+                        conn.close()
+                    
+                    messagebox.showinfo("Éxito", 
+                        f"Diagnóstico guardado exitosamente\n\n"
+                        f"Enfermedad: {diagnostico_principal['nombre']}\n"
+                        f"Certeza: {diagnostico_principal['porcentaje']}%")
+                    
+                    form_window.destroy()
+                    self.show_diagnosticos()
+                else:
+                    messagebox.showerror("Error", "No se pudo guardar el diagnóstico")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar: {str(e)}")
+        
+        btn_analizar = tk.Button(scrollable_frame, text="🔍 ANALIZAR Y DIAGNOSTICAR", 
+                                bg="#10b981", fg="white", font=("Arial", 13, "bold"),
+                                height=2, command=analizar_y_diagnosticar)
+        btn_analizar.pack(fill="x", padx=0, pady=15)
+        
+        # ============ BOTÓN CANCELAR ============
+        tk.Button(scrollable_frame, text="Cancelar", bg="#dc2626", fg="white",
+                 font=("Arial", 11), command=form_window.destroy).pack(fill="x", padx=0, pady=5)
 
 
 # ======== Ejecutar la app ========

@@ -482,7 +482,7 @@ class MotorInferencia:
             LEFT JOIN enfermedad_signo esg2 ON e.id = esg2.enfermedad_id
             GROUP BY e.id
             HAVING sintomas_coincidentes > 0 OR signos_coincidentes > 0
-            ORDER BY (sintomas_coincidentes * 0.7 + signos_coincidentes * 0.3) DESC
+            ORDER BY e.id DESC
             """.format(
                 ",".join("?" * len(sintomas_ids)) if sintomas_ids else "NULL",
                 ",".join("?" * len(signos_ids)) if signos_ids else "NULL"
@@ -504,11 +504,40 @@ class MotorInferencia:
                 sintomas_coincidentes = row[4] or 0
                 signos_coincidentes = row[6] or 0
                 
-                # Calculate match percentage (70% symptoms, 30% signs)
+                # Algoritmo mejorado de cálculo de certeza
+                # Lógica: 
+                # 1. Si tenemos síntomas coincidentes, damos puntuación positiva
+                # 2. Si tenemos síntomas que NO coinciden (esperados pero no presentes), penalizamos ligeramente
+                # 3. Los signos tienen menos peso pero contribuyen
+                
                 if total_sintomas > 0 or total_signos > 0:
-                    porcentaje_sintomas = (sintomas_coincidentes / total_sintomas * 0.7) if total_sintomas > 0 else 0
-                    porcentaje_signos = (signos_coincidentes / total_signos * 0.3) if total_signos > 0 else 0
-                    porcentaje_total = (porcentaje_sintomas + porcentaje_signos) * 100
+                    # Porcentaje de síntomas coincidentes (más importante)
+                    if total_sintomas > 0:
+                        # Puntuación: coincidentes / total * 100
+                        # Si 5 de 10 síntomas coinciden: 50%
+                        # Si 8 de 10 síntomas coinciden: 80%
+                        porcentaje_sintomas = (sintomas_coincidentes / total_sintomas) * 100
+                    else:
+                        porcentaje_sintomas = 0
+                    
+                    # Porcentaje de signos coincidentes (menos importante)
+                    if total_signos > 0:
+                        porcentaje_signos = (signos_coincidentes / total_signos) * 100
+                    else:
+                        porcentaje_signos = 0
+                    
+                    # Cálculo final ponderado (70% síntomas, 30% signos)
+                    porcentaje_total = (porcentaje_sintomas * 0.7) + (porcentaje_signos * 0.3)
+                    
+                    # Bonus si hay muchos síntomas coincidentes
+                    # Si 7 o más síntomas coinciden, agregamos 10% bonus
+                    if sintomas_coincidentes >= 7:
+                        porcentaje_total += 10
+                    elif sintomas_coincidentes >= 5:
+                        porcentaje_total += 5
+                    
+                    # Limitar a máximo 100%
+                    porcentaje_total = min(porcentaje_total, 100)
                 else:
                     porcentaje_total = 0
                 
@@ -524,7 +553,10 @@ class MotorInferencia:
                     'total_signos': total_signos
                 })
             
-            return enfermedades
+            # IMPORTANTE: Ordenar por porcentaje descendente (mayor certeza primero)
+            enfermedades_ordenadas = sorted(enfermedades, key=lambda x: x['porcentaje'], reverse=True)
+            
+            return enfermedades_ordenadas
             
         except Error as e:
             print(f"Error en el motor de inferencia: {e}")

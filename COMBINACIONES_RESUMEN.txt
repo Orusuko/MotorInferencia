@@ -1,0 +1,118 @@
+================================================================================
+RESUMEN DE COMBINACIONES DE SINTOMAS PARA DIFERENTES DIAGNOSTICOS
+================================================================================
+
+SINTOMAS DISPONIBLES:
+ID 1: Fiebre
+ID 2: Tos seca
+ID 3: Dolor de cabeza
+ID 4: Fatiga
+ID 5: Dolor muscular
+
+================================================================================
+COMBINACIONES PARA OBTENER CADA DIAGNOSTICO
+================================================================================
+
+[1] FARINGITIS (70% certeza - RECOMENDADO)
+    Sintomas: Fiebre (1) + Dolor de cabeza (3)
+    NO incluir: Tos seca, Fatiga, Dolor muscular
+    
+[2] RESFRIADO COMUN (70% certeza - RECOMENDADO)
+    Sintomas: Tos seca (2) + Dolor de cabeza (3) + Fatiga (4)
+    NO incluir: Fiebre, Dolor muscular
+    
+[3] COVID-19 (70% certeza - RECOMENDADO)
+    Sintomas: Fiebre (1) + Tos seca (2) + Fatiga (4)
+    NO incluir: Dolor de cabeza, Dolor muscular
+    
+[4] GRIPE/INFLUENZA (Actual - 42% certeza)
+    Sintomas: Fiebre (1) + Dolor de cabeza (3) + Dolor muscular (5)
+    Para aumentar certeza, agregar:
+    - Tos seca (2) + Fatiga (4) para llegar a 100% (5 de 5 sintomas)
+
+[5] BRONQUITIS (Mismo que COVID-19)
+    Sintomas: Fiebre (1) + Tos seca (2) + Fatiga (4)
+    
+[6] NEUMANIA (Mismo que COVID-19)
+    Sintomas: Fiebre (1) + Tos seca (2) + Fatiga (4)
+
+================================================================================
+PASOS PARA PROBAR EN LA APLICACION
+================================================================================
+
+PASO 1: Abre la aplicacion
+        - Inicia sesion como MEDICO
+
+PASO 2: Ve a DIAGNOSTICOS -> AGREGAR
+
+PASO 3: Selecciona PACIENTE
+        - Elige: Mario Leon
+
+PASO 4: Marca SOLO estos sintomas (segun lo que desees diagnosticar):
+
+        PARA FARINGITIS:
+        ✓ Fiebre
+        ✓ Dolor de cabeza
+        (NO marques: Tos seca, Fatiga, Dolor muscular)
+
+        PARA RESFRIADO COMUN:
+        ✓ Tos seca
+        ✓ Dolor de cabeza
+        ✓ Fatiga
+        (NO marques: Fiebre, Dolor muscular)
+
+        PARA COVID-19:
+        ✓ Fiebre
+        ✓ Tos seca
+        ✓ Fatiga
+        (NO marques: Dolor de cabeza, Dolor muscular)
+
+PASO 5: Haz clic en "ANALIZAR Y DIAGNOSTICAR"
+
+PASO 6: El motor seleccionara automaticamente el diagnostico con mayor certeza
+
+================================================================================
+ANALISIS DETALLADO
+================================================================================
+
+GRIPE (INFLUENZA)
+- Sintomas en la BD: Fiebre, Dolor de cabeza, Dolor muscular, Fatiga, Tos seca (5 total)
+- Sintomas actuales: 3 de 5
+- Certeza: 60% de sintomas + 5% bonus = 65%
+- Razon baja: Faltan Fatiga y Tos seca
+
+FARINGITIS
+- Sintomas en la BD: Fiebre, Dolor de cabeza (2 total)
+- Si seleccionas: Fiebre + Dolor de cabeza (2 de 2)
+- Certeza: 100% de sintomas = 100%
+- Resultado: 70% (ponderado al 70% de la formula)
+
+COVID-19
+- Sintomas en la BD: Fiebre, Tos seca, Fatiga (3 total)
+- Si seleccionas: Fiebre + Tos seca + Fatiga (3 de 3)
+- Certeza: 100% de sintomas = 100%
+- Resultado: 70% (ponderado al 70% de la formula)
+
+RESFRIADO COMUN
+- Sintomas en la BD: Tos seca, Dolor de cabeza, Fatiga (3 total)
+- Si seleccionas: Tos seca + Dolor de cabeza + Fatiga (3 de 3)
+- Certeza: 100% de sintomas = 100%
+- Resultado: 70% (ponderado al 70% de la formula)
+
+================================================================================
+RECOMENDACIONES PARA AUMENTAR CERTEZA DE GRIPE
+================================================================================
+
+OPCION A: Mantener sintomas actuales + Agregar 2 mas
+   Sintomas a marcar:
+   ✓ Fiebre (ID: 1)
+   ✓ Dolor de cabeza (ID: 3)
+   ✓ Dolor muscular (ID: 5)
+   ✓ Tos seca (ID: 2)      <- NUEVO
+   ✓ Fatiga (ID: 4)        <- NUEVO
+   
+   Resultado: 5 de 5 sintomas = 100% de coincidencia
+   Certeza final: 100% + 10% bonus = 100% (maxima permitida)
+
+================================================================================
+
