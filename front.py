@@ -1431,9 +1431,9 @@ class DashboardWindow(tk.Tk):
                 messagebox.showwarning("Aviso", "Selecciona al menos un síntoma")
                 return
             
-            # Usar motor de inferencia
-            from models import MotorInferencia
-            diagnosticos_sugeridos = MotorInferencia.diagnosticar(sintomas_seleccionados, signos_seleccionados)
+            # Usar motor de inferencia mejorado
+            from motorInferencia import diagnosticar
+            diagnosticos_sugeridos = diagnosticar(sintomas_seleccionados, signos_seleccionados)
             
             if not diagnosticos_sugeridos:
                 messagebox.showwarning("Aviso", "No se encontraron enfermedades que coincidan con los síntomas")
